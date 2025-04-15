@@ -96,6 +96,8 @@ if(CMAKE_VERSION VERSION_LESS "3.14")
     STATUS "cmake version ${CMAKE_VERSION} not compatible with CPM.cmake.")
 endif()
 
+# if just want to try local packages at first
+# set CPM_USE_LOCAL_PACKAGES ON
 set(linyaps-box_CPM_LOCAL_PACKAGES_ONLY
     OFF
     CACHE BOOL "use local packages only")
@@ -205,7 +207,7 @@ if(linyaps-box_ENABLE_CPM)
     NAME nlohmann_json
     VERSION 3.11.3
     GITHUB_REPOSITORY nlohmann/json
-    GIT_TAG v3.11.3
+    GIT_TAG v3.12.0
     EXCLUDE_FROM_ALL ON
     OPTIONS "JSON_BuildTests OFF")
   CPMFindPackage(
