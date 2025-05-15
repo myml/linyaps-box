@@ -305,6 +305,7 @@ target_link_libraries("${linyaps-box_APP}" ${linyaps-box_APP_LINK_LIBRARIES})
 if(linyaps-box_STATIC)
   target_link_options("${linyaps-box_APP}" PRIVATE -static -static-libgcc
                       -static-libstdc++)
+  target_compile_definitions("${linyaps-box_APP}" PRIVATE "LINYAPS_BOX_STATIC_LINK")
 endif()
 target_compile_features("${linyaps-box_APP}" PRIVATE cxx_std_17)
 set_property(TARGET "${linyaps-box_APP}" PROPERTY CXX_STANDARD 17)
@@ -401,7 +402,8 @@ function(setup_linyaps_box_smoke_tests)
       ./tests/ll-box-st/07-check-capability.json
       ./tests/ll-box-st/08-check-umask.json
       ./tests/ll-box-st/09-check-rlimit.json
-      ./tests/ll-box-st/10-check-oom.json)
+      ./tests/ll-box-st/10-check-oom.json
+      ./tests/ll-box-st/11-output-to-null.json)
 
   foreach(test ${linyaps-box_SMOKE_TESTS})
     add_test(
