@@ -13,7 +13,7 @@ BuildRequires:  cmake gcc-c++ glib2-devel glibc-static libstdc++-static gtest-de
 Linglong sandbox with OCI standard.
 
 %prep
-%autosetup -p1 -n linglong-%{version}
+%autosetup -p1 -n linglong-box-%{version}
 
 %define _debugsource_template %{nil}
 
