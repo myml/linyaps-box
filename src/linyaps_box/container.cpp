@@ -16,6 +16,7 @@
 #include "linyaps_box/utils/open_file.h"
 #include "linyaps_box/utils/platform.h"
 #include "linyaps_box/utils/socketpair.h"
+#include "linyaps_box/utils/symlink.h"
 #include "linyaps_box/utils/touch.h"
 
 #include <linux/magic.h>
@@ -881,6 +882,7 @@ public:
         // maybe user will bind mount the sub directory of / from host
         if (!linyaps_box::get_private_data(container).mount_dev_from_host) {
             this->configure_default_devices();
+            this->configure_dev_symlinks();
         }
 
         LINYAPS_BOX_DEBUG() << "finalize " << remounts.size() << " remounts";
@@ -1122,6 +1124,7 @@ private:
         this->mount(mount);
     }
 
+    // https://github.com/opencontainers/runtime-spec/blob/main/config-linux.md#default-devices
     void configure_default_devices()
     {
         LINYAPS_BOX_DEBUG() << "Configure default devices";
@@ -1136,9 +1139,27 @@ private:
         this->configure_device("/dev/urandom", default_mode, S_IFCHR, makedev(1, 9), uid, gid);
         this->configure_device("/dev/tty", default_mode, S_IFCHR, makedev(5, 0), uid, gid);
 
-        // TODO Handle `/dev/console`;
+        // bind mount /dev/pts/ptmx to /dev/ptmx
+        // https://docs.kernel.org/filesystems/devpts.html
+        linyaps_box::config::mount_t mount;
+        mount.source = root.current_path() / "dev/pts/ptmx";
+        mount.destination = "/dev/ptmx";
+        mount.type = "bind";
+        mount.flags = MS_BIND | MS_PRIVATE | MS_NOEXEC | MS_NOSUID;
+        this->mount(mount);
+    }
 
-        // TODO Handle `/dev/ptmx`;
+    // https://github.com/opencontainers/runtime-spec/blob/main/runtime-linux.md
+    void configure_dev_symlinks()
+    {
+        LINYAPS_BOX_DEBUG() << "Configure dev symlinks";
+
+        auto dev_fd = linyaps_box::utils::open_at(root, "dev");
+
+        linyaps_box::utils::symlink_at("/proc/self/fd", dev_fd, "fd");
+        linyaps_box::utils::symlink_at("/proc/self/fd/0", dev_fd, "stdin");
+        linyaps_box::utils::symlink_at("/proc/self/fd/1", dev_fd, "stdout");
+        linyaps_box::utils::symlink_at("/proc/self/fd/2", dev_fd, "stderr");
     }
 };
 
