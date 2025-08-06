@@ -38,7 +38,7 @@ try {
         std::stringstream result;
         for (int i = 0; i < argc; ++i) {
             result << " \"";
-            for (char *c = argv[i]; *c; ++c) {
+            for (const char *c = argv[i]; *c != '\0'; ++c) {
                 if (*c == '\\') {
                     result << "\\\\";
                 } else if (*c == '"') {
@@ -77,10 +77,10 @@ try {
                                   } },
                       options.subcommand_opt);
 } catch (const std::exception &e) {
-    std::cerr << "Error: " << e.what() << std::endl;
+    LINYAPS_BOX_ERR() << "Error: " << e.what();
     return -1;
 } catch (...) {
-    std::cerr << "Error: unknown" << std::endl;
+    LINYAPS_BOX_ERR() << "unknown error";
     return -1;
 }
 

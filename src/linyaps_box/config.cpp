@@ -79,7 +79,7 @@ parse_mount_options(const std::vector<std::string> &options)
             continue;
         }
         if (auto it = propagation_flags_map.find(opt); it != propagation_flags_map.end()) {
-            propagation_flags &= it->second;
+            propagation_flags |= it->second;
             continue;
         }
 
@@ -262,6 +262,21 @@ linyaps_box::config::linux_t parse_linux(const nlohmann::json &obj,
         linux.readonly_paths = std::move(readonly_paths);
     }
 
+    if (auto rootfs_propagation = ptr / "rootfsPropagation"; obj.contains(rootfs_propagation)) {
+        auto val = obj[rootfs_propagation].get<std::string>();
+        if (val == "shared") {
+            linux.rootfs_propagation = MS_SHARED;
+        } else if (val == "slave") {
+            linux.rootfs_propagation = MS_SLAVE;
+        } else if (val == "private") {
+            linux.rootfs_propagation = MS_PRIVATE;
+        } else if (val == "unbindable") {
+            linux.rootfs_propagation = MS_UNBINDABLE;
+        } else {
+            throw std::runtime_error("unsupported rootfs propagation: " + val);
+        }
+    }
+
     return linux;
 }
 
@@ -360,7 +375,7 @@ linyaps_box::config parse_1_2_0(const nlohmann::json &j)
                 }
 
                 if (h.contains("env")) {
-                    std::map<std::string, std::string> env;
+                    std::unordered_map<std::string, std::string> env;
 
                     for (const auto &e : h["env"].get<std::vector<std::string>>()) {
                         auto pos = e.find('=');
@@ -431,6 +446,11 @@ linyaps_box::config parse_1_2_0(const nlohmann::json &j)
 
     if (j.contains(root / "readonly")) {
         cfg.root.readonly = j[root / "readonly"].get<bool>();
+    }
+
+    auto annotations = ptr / "annotations";
+    if (j.contains(annotations)) {
+        cfg.annotations = j[annotations].get<std::unordered_map<std::string, std::string>>();
     }
 
     return cfg;
