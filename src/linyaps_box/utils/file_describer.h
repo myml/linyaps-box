@@ -14,6 +14,26 @@ class file_descriptor_closed_exception : public std::runtime_error
 {
 public:
     file_descriptor_closed_exception();
+    file_descriptor_closed_exception(const file_descriptor_closed_exception &) = default;
+    file_descriptor_closed_exception(file_descriptor_closed_exception &&) noexcept = default;
+    auto operator=(const file_descriptor_closed_exception &)
+            -> file_descriptor_closed_exception & = default;
+    auto operator=(file_descriptor_closed_exception &&) noexcept
+            -> file_descriptor_closed_exception & = default;
+    ~file_descriptor_closed_exception() noexcept override;
+};
+
+class file_descriptor_invalid_exception : public std::runtime_error
+{
+public:
+    explicit file_descriptor_invalid_exception(const std::string &message);
+    file_descriptor_invalid_exception(const file_descriptor_invalid_exception &) = default;
+    file_descriptor_invalid_exception(file_descriptor_invalid_exception &&) noexcept = default;
+    auto operator=(const file_descriptor_invalid_exception &)
+            -> file_descriptor_invalid_exception & = default;
+    auto operator=(file_descriptor_invalid_exception &&) noexcept
+            -> file_descriptor_invalid_exception & = default;
+    ~file_descriptor_invalid_exception() noexcept override;
 };
 
 class file_descriptor
@@ -24,28 +44,29 @@ public:
     ~file_descriptor();
 
     file_descriptor(const file_descriptor &) = delete;
-    file_descriptor &operator=(const file_descriptor &) = delete;
+    auto operator=(const file_descriptor &) -> file_descriptor & = delete;
 
     file_descriptor(file_descriptor &&other) noexcept;
+    auto operator=(file_descriptor &&other) noexcept -> file_descriptor &;
 
-    file_descriptor &operator=(file_descriptor &&other) noexcept;
+    [[nodiscard]] auto get() const noexcept -> int;
 
-    [[nodiscard]] int get() const noexcept;
+    auto release() -> void;
 
-    int release() && noexcept;
+    [[nodiscard]] auto duplicate() const -> file_descriptor;
 
-    [[nodiscard]] file_descriptor duplicate() const;
+    auto operator<<(const std::byte &byte) -> file_descriptor &;
 
-    file_descriptor &operator<<(const std::byte &byte);
+    auto operator>>(std::byte &byte) -> file_descriptor &;
 
-    file_descriptor &operator>>(std::byte &byte);
+    [[nodiscard]] auto proc_path() const -> std::filesystem::path;
 
-    [[nodiscard]] std::filesystem::path proc_path() const;
+    [[nodiscard]] auto current_path() const noexcept -> std::filesystem::path;
 
-    [[nodiscard]] std::filesystem::path current_path() const noexcept;
+    static auto cwd() -> file_descriptor;
 
 private:
-    int fd{ -1 };
+    int fd_{ -1 };
 };
 
 } // namespace linyaps_box::utils
