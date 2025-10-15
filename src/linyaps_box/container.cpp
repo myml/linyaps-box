@@ -318,6 +318,7 @@ void syscall_mount(const char *_special_file,
         if (_dir == nullptr) {
             return "nullptr";
         }
+
         if (auto str = std::string_view{ _dir }; str.rfind(fd_prefix, 0) == 0) {
             return linyaps_box::utils::inspect_fd(std::stoi(str.data() + fd_prefix.size()));
         }
@@ -790,6 +791,8 @@ public:
             return;
         }
 
+        LINYAPS_BOX_DEBUG() << "make readonly paths";
+
         for (const auto &path : *linux->readonly_paths) {
             linyaps_box::utils::file_descriptor dst;
             try {
@@ -836,10 +839,14 @@ public:
             return;
         }
 
+        LINYAPS_BOX_DEBUG() << "make masked paths";
+
         for (const auto &path : *linux->masked_paths) {
             linyaps_box::utils::file_descriptor dst;
             try {
-                dst = linyaps_box::utils::open_at(root, path);
+                // we only need to open a fd to refer to the path
+                // so O_PATH is sufficient.
+                dst = linyaps_box::utils::open_at(root, path, O_PATH | O_CLOEXEC);
             } catch (const std::system_error &e) {
                 if (auto err = e.code().value(); err == ENOENT || err == EACCES) {
                     continue;
@@ -1587,8 +1594,13 @@ void processing_extensions(const linyaps_box::container &container)
     LINYAPS_BOX_DEBUG() << "Processing container extensions";
 
     // ext_ns_last_pid
-    if (auto it = config.annotations->find("cn.org.linyaps.runtime.ns_last_pid");
-        it != config.annotations->end()) {
+    // This file may not exist if the kernel config CONFIG_CHECKPOINT_RESTORE is not enabled
+    // and this feature originally was used for userspace checkpoint/restore
+    // we use this feature for avoiding two process has the same pid.
+    // e.g some application will register a tray through dbus and use the pid as the part of
+    // dbus object path, if two process has the same pid, the dbus object path will conflict
+    auto it = config.annotations->find("cn.org.linyaps.runtime.ns_last_pid");
+    while (it != config.annotations->end()) {
         LINYAPS_BOX_DEBUG() << "Processing ns_last_pid extension: " << it->second;
 
         // Validate input is a valid pid_t number
@@ -1606,7 +1618,13 @@ void processing_extensions(const linyaps_box::container &container)
             throw std::runtime_error("parse ns_last_pid " + it->second + " failed: " + e.what());
         }
 
-        std::ofstream ofs("/proc/sys/kernel/ns_last_pid");
+        // ignore ns_last_pid if the file does not exist
+        auto ns_last_pid = std::filesystem::path{ "/proc/sys/kernel/ns_last_pid" };
+        if (!std::filesystem::exists(ns_last_pid)) {
+            break;
+        }
+
+        std::ofstream ofs(ns_last_pid);
         if (!ofs) {
             throw std::system_error(errno,
                                     std::generic_category(),
@@ -1621,6 +1639,7 @@ void processing_extensions(const linyaps_box::container &container)
         }
 
         LINYAPS_BOX_DEBUG() << "Successfully set ns_last_pid to " << it->second;
+        break;
     }
 
     LINYAPS_BOX_DEBUG() << "Container extensions processing completed";
@@ -1673,6 +1692,7 @@ try {
 
     auto rootfs = container.get_config().root.path;
     if (rootfs.is_relative()) {
+        LINYAPS_BOX_DEBUG() << "rootfs is relative based on bundle path:" << container.get_bundle();
         rootfs = std::filesystem::canonical(container.get_bundle() / rootfs);
     }
 
@@ -1844,9 +1864,7 @@ std::tuple<int, linyaps_box::utils::file_descriptor> start_container_process(
     }
 
     const int clone_flag = runtime_ns::generate_clone_flag(namespaces);
-    clone_fn_args args = { &container,
-                           &process,
-                           linyaps_box::utils::file_descriptor{ sockets.second.get() } };
+    clone_fn_args args = { &container, &process, std::move(sockets.second) };
 
     LINYAPS_BOX_DEBUG() << "OCI runtime in runtime namespace: PID=" << getpid()
                         << " PIDNS=" << linyaps_box::utils::get_pid_namespace();
