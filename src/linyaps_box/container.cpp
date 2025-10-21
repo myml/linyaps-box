@@ -121,7 +121,8 @@ std::ostream &operator<<(std::ostream &os, const sync_message message)
 
 struct MountFlag
 {
-    std::underlying_type_t<decltype(MS_RDONLY)> flag;
+    // mount flag should be unsigned int due to MS_NOUSER (1U << 31)
+    unsigned int flag;
     std::string_view name;
 };
 
@@ -1032,14 +1033,16 @@ private:
 
     void configure_device(const std::filesystem::path &destination,
                           mode_t mode,
-                          int type,
+                          std::filesystem::file_type type,
                           dev_t dev,
                           uid_t uid,
                           gid_t gid)
     {
         assert(destination.is_absolute());
 
-        if (type != S_IFCHR && type != S_IFBLK && type != S_IFIFO) {
+        if (type != std::filesystem::file_type::character
+            && type != std::filesystem::file_type::block
+            && type != std::filesystem::file_type::fifo) {
             throw std::runtime_error("unsupported device type");
         }
 
@@ -1055,27 +1058,13 @@ private:
         if (destination_fd.has_value()) {
             // if already exists, check if it is a required device
             auto stat = linyaps_box::utils::lstatat(*destination_fd, "");
+            auto cur_type = linyaps_box::utils::to_fs_file_type(stat.st_mode);
             bool satisfied{ true };
-            if (__S_ISTYPE(stat.st_mode, type)) {
-                auto dump_mode = [](mode_t mode) {
-                    if (S_ISCHR(mode)) {
-                        return "Character";
-                    }
-
-                    if (S_ISBLK(mode)) {
-                        return "Block";
-                    }
-
-                    if (S_ISFIFO(mode)) {
-                        return "FIFO";
-                    }
-
-                    return "unknown";
-                };
-
+            if (linyaps_box::utils::is_type(stat.st_mode, type)) {
                 LINYAPS_BOX_DEBUG()
                         << "the type of existing device: " << destination << " is not required\n"
-                        << "expect " << dump_mode(mode) << ", got " << dump_mode(stat.st_mode);
+                        << "expect " << linyaps_box::utils::to_string(type) << ", got "
+                        << linyaps_box::utils::to_string(cur_type);
                 satisfied = false;
             }
 
@@ -1105,7 +1094,9 @@ private:
 
         try {
             auto path = destination.relative_path();
-            linyaps_box::utils::mknodat(root, path, mode | type, dev);
+            auto f_type = static_cast<unsigned int>(linyaps_box::utils::to_linux_file_type(type));
+
+            linyaps_box::utils::mknodat(root, path, mode | f_type, dev);
 
             auto new_dev = linyaps_box::utils::open_at(root, path, O_PATH);
             path = new_dev.proc_path();
@@ -1138,14 +1129,16 @@ private:
         LINYAPS_BOX_DEBUG() << "Configure default devices";
 
         constexpr auto default_mode = 0666;
+        constexpr auto default_type = std::filesystem::file_type::character;
         auto uid = container.get_config().process.user.uid;
         auto gid = container.get_config().process.user.gid;
-        this->configure_device("/dev/null", default_mode, S_IFCHR, makedev(1, 3), uid, gid);
-        this->configure_device("/dev/zero", default_mode, S_IFCHR, makedev(1, 5), uid, gid);
-        this->configure_device("/dev/full", default_mode, S_IFCHR, makedev(1, 7), uid, gid);
-        this->configure_device("/dev/random", default_mode, S_IFCHR, makedev(1, 8), uid, gid);
-        this->configure_device("/dev/urandom", default_mode, S_IFCHR, makedev(1, 9), uid, gid);
-        this->configure_device("/dev/tty", default_mode, S_IFCHR, makedev(5, 0), uid, gid);
+
+        this->configure_device("/dev/null", default_mode, default_type, makedev(1, 3), uid, gid);
+        this->configure_device("/dev/zero", default_mode, default_type, makedev(1, 5), uid, gid);
+        this->configure_device("/dev/full", default_mode, default_type, makedev(1, 7), uid, gid);
+        this->configure_device("/dev/random", default_mode, default_type, makedev(1, 8), uid, gid);
+        this->configure_device("/dev/urandom", default_mode, default_type, makedev(1, 9), uid, gid);
+        this->configure_device("/dev/tty", default_mode, default_type, makedev(5, 0), uid, gid);
 
         // bind mount /dev/pts/ptmx to /dev/ptmx
         // https://docs.kernel.org/filesystems/devpts.html
@@ -1680,7 +1673,7 @@ try {
         STDOUT_FILENO,
         STDERR_FILENO,
     };
-    for (uint fd = 0; fd < args.container->preserve_fds(); ++fd) {
+    for (auto fd = 0; fd < args.container->preserve_fds(); ++fd) {
         except_fds.insert(fd + 3);
     }
     except_fds.insert(static_cast<unsigned int>(args.socket.get()));
